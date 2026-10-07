@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel as PydanticBaseModel
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -156,6 +157,59 @@ def list_accounts(
 @router.get("/accounts/{id_cuenta}", response_model=CuentaOut)
 def get_account(id_cuenta: uuid.UUID, db: Session = Depends(get_db)):
     return _get_cuenta_or_404(db, id_cuenta)
+
+
+class DestinatarioPublico(PydanticBaseModel):
+    id_cuenta: str
+    numero_cuenta_enmascarado: str
+    tipo_cuenta: str
+    moneda: str
+    nombre_titular: str
+
+
+@router.get("/accounts/by-numero/{numero_cuenta}")
+def buscar_cuenta_por_numero(numero_cuenta: str, db: Session = Depends(get_db)):
+    """Busca una cuenta por su número de cuenta (10 dígitos).
+    Devuelve información pública mínima del titular para confirmar destinatario.
+    NO expone datos sensibles (sin documento, sin teléfono, sin email completo).
+    """
+    # Permitir búsqueda exacta o coincidencia parcial si el usuario no escribe los 10 dígitos
+    stmt = select(Cuenta).where(Cuenta.numero_cuenta.like(f"{numero_cuenta}%"))
+    cuenta = db.execute(stmt).scalars().first()
+
+    if cuenta is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No existe ninguna cuenta con ese número",
+        )
+    if cuenta.estado != "activa":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="La cuenta encontrada no está activa",
+        )
+
+    # Consultar nombre del titular a identity-service (solo nombre, no datos sensibles)
+    nombre_titular = "Titular"
+    try:
+        usuario = get_user(cuenta.id_usuario)
+        if usuario:
+            nombre = usuario.get("nombre", "")
+            apellido = usuario.get("apellido") or ""
+            nombre_titular = f"{nombre} {apellido}".strip()
+    except Exception:
+        pass  # Si identity-service no está disponible, seguimos sin el nombre
+
+    nc = cuenta.numero_cuenta or ""
+    enmascarado = f"****{nc[-4:]}" if len(nc) >= 4 else "****"
+
+    return {
+        "id_cuenta": str(cuenta.id_cuenta),
+        "numero_cuenta_enmascarado": enmascarado,
+        "tipo_cuenta": cuenta.tipo_cuenta,
+        "moneda": cuenta.moneda,
+        "nombre_titular": nombre_titular,
+    }
+
 
 
 @router.get("/accounts/{id_cuenta}/limits", response_model=list[LimiteOperativoOut])
