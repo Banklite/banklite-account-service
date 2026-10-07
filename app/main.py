@@ -14,9 +14,14 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger(settings.service_name)
 
 
+from sqlalchemy import text
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    # Migración idempotente: agregar numero_cuenta si no existe
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE cuenta ADD COLUMN IF NOT EXISTS numero_cuenta VARCHAR(20);"))
     start_consumer()
     logger.info("%s iniciado", settings.service_name)
     yield

@@ -89,7 +89,10 @@ def open_account(payload: AccountCreate, db: Session = Depends(get_db)):
 
     proyeccion_encontrada = db.get(UsuarioVerificado, payload.id_usuario) is not None
 
+    import random
+    numero_aleatorio = str(random.randint(1000000000, 9999999999))
     cuenta = Cuenta(
+        numero_cuenta=numero_aleatorio,
         id_usuario=payload.id_usuario,
         moneda=moneda,
         estado="activa",

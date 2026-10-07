@@ -46,6 +46,7 @@ class CuentaOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id_cuenta: uuid.UUID
+    numero_cuenta: str | None = None
     id_usuario: uuid.UUID
     tipo_cuenta: str
     moneda: str

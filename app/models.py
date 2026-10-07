@@ -47,6 +47,7 @@ class Cuenta(Base):
     )
 
     id_cuenta: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    numero_cuenta: Mapped[str | None] = mapped_column(String(20), unique=True, nullable=True)
     id_usuario: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     tipo_cuenta: Mapped[str] = mapped_column(String(32), nullable=False, default="ahorros")
     moneda: Mapped[str] = mapped_column(String(3), nullable=False)
