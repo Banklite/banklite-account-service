@@ -24,6 +24,18 @@ from ..schemas import (
 router = APIRouter(tags=["cuentas"])
 
 
+def generar_numero_cuenta(db: Session) -> str:
+    """Numero de cuenta de 10 digitos, unico (reintenta si ya existe)."""
+    import random
+
+    for _ in range(20):
+        numero = str(random.randint(1000000000, 9999999999))
+        existe = db.execute(select(Cuenta.id_cuenta).where(Cuenta.numero_cuenta == numero)).first()
+        if existe is None:
+            return numero
+    raise HTTPException(status_code=500, detail="No se pudo generar un numero de cuenta unico")
+
+
 def _get_cuenta_or_404(db: Session, id_cuenta: uuid.UUID) -> Cuenta:
     cuenta = db.get(Cuenta, id_cuenta)
     if cuenta is None:
@@ -90,10 +102,8 @@ def open_account(payload: AccountCreate, db: Session = Depends(get_db)):
 
     proyeccion_encontrada = db.get(UsuarioVerificado, payload.id_usuario) is not None
 
-    import random
-    numero_aleatorio = str(random.randint(1000000000, 9999999999))
     cuenta = Cuenta(
-        numero_cuenta=numero_aleatorio,
+        numero_cuenta=generar_numero_cuenta(db),
         id_usuario=payload.id_usuario,
         moneda=moneda,
         estado="activa",
@@ -173,8 +183,9 @@ def buscar_cuenta_por_numero(numero_cuenta: str, db: Session = Depends(get_db)):
     Devuelve información pública mínima del titular para confirmar destinatario.
     NO expone datos sensibles (sin documento, sin teléfono, sin email completo).
     """
-    # Permitir búsqueda exacta o coincidencia parcial si el usuario no escribe los 10 dígitos
-    stmt = select(Cuenta).where(Cuenta.numero_cuenta.like(f"{numero_cuenta}%"))
+    # Busqueda EXACTA (se ignoran espacios/guiones que el usuario pueda escribir)
+    numero_cuenta = "".join(ch for ch in numero_cuenta if ch.isdigit())
+    stmt = select(Cuenta).where(Cuenta.numero_cuenta == numero_cuenta)
     cuenta = db.execute(stmt).scalars().first()
 
     if cuenta is None:

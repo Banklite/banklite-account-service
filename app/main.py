@@ -16,12 +16,30 @@ logger = logging.getLogger(settings.service_name)
 
 from sqlalchemy import text
 
+def _rellenar_numeros_cuenta() -> None:
+    """Asigna numero_cuenta a las cuentas antiguas que lo tienen NULL (idempotente).
+    Sin esto esas cuentas nunca aparecen al buscar un destinatario."""
+    from .database import SessionLocal
+    from .models import Cuenta
+    from .routers.accounts import generar_numero_cuenta
+
+    with SessionLocal() as db:
+        pendientes = db.query(Cuenta).filter(Cuenta.numero_cuenta.is_(None)).all()
+        for c in pendientes:
+            c.numero_cuenta = generar_numero_cuenta(db)
+            db.flush()
+        db.commit()
+        if pendientes:
+            logger.info("Numero de cuenta asignado a %d cuentas antiguas", len(pendientes))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     # Migración idempotente: agregar numero_cuenta si no existe
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE cuenta ADD COLUMN IF NOT EXISTS numero_cuenta VARCHAR(20);"))
+    _rellenar_numeros_cuenta()
     start_consumer()
     logger.info("%s iniciado", settings.service_name)
     yield
