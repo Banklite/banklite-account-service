@@ -199,6 +199,11 @@ def buscar_cuenta_por_numero(numero_cuenta: str, db: Session = Depends(get_db)):
             detail="La cuenta encontrada no está activa",
         )
 
+    return _destinatario_publico(cuenta)
+
+
+def _destinatario_publico(cuenta: Cuenta) -> dict:
+    """Datos publicos minimos de una cuenta destino (sin datos sensibles)."""
     # Consultar nombre del titular a identity-service (solo nombre, no datos sensibles)
     nombre_titular = "Titular"
     try:
@@ -221,6 +226,14 @@ def buscar_cuenta_por_numero(numero_cuenta: str, db: Session = Depends(get_db)):
         "nombre_titular": nombre_titular,
     }
 
+
+@router.get("/accounts/{id_cuenta}/public")
+def cuenta_publica(id_cuenta: uuid.UUID, db: Session = Depends(get_db)):
+    """Datos publicos de una cuenta por id (usado por favoritos)."""
+    cuenta = _get_cuenta_or_404(db, id_cuenta)
+    if cuenta.estado != "activa":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La cuenta no está activa")
+    return _destinatario_publico(cuenta)
 
 
 @router.get("/accounts/{id_cuenta}/limits", response_model=list[LimiteOperativoOut])
