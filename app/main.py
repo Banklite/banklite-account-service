@@ -1,13 +1,16 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, status
+from fastapi import Depends, FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from .config import settings
 from .consumer import start_consumer, stop_consumer
-from .database import Base, engine
+from .database import Base, engine, get_db
+from .models import Cuenta
 from .routers import accounts
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -70,6 +73,16 @@ app.include_router(accounts.router)
 @app.get("/health", tags=["infra"])
 def health():
     return {"status": "ok", "service": settings.service_name}
+
+
+@app.get("/stats", tags=["infra"])
+def stats(db: Session = Depends(get_db)):
+    return {
+        "total_cuentas": db.execute(select(func.count()).select_from(Cuenta)).scalar(),
+        "cuentas_activas": db.execute(
+            select(func.count()).select_from(Cuenta).where(Cuenta.estado == "activa")
+        ).scalar(),
+    }
 
 
 @app.exception_handler(Exception)
