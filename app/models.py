@@ -3,6 +3,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -59,6 +60,9 @@ class Cuenta(Base):
         back_populates="cuenta", cascade="all, delete-orphan"
     )
     restricciones: Mapped[list["RestriccionRegulatoria"]] = relationship(
+        back_populates="cuenta", cascade="all, delete-orphan"
+    )
+    bolsillos: Mapped[list["BolsilloAhorro"]] = relationship(
         back_populates="cuenta", cascade="all, delete-orphan"
     )
 
@@ -142,3 +146,47 @@ class TransferenciaRecibida(Base):
     monto: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     estado: Mapped[str] = mapped_column(String(16), nullable=False)
     recibido_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class BolsilloAhorro(Base):
+    """Bolsillos de ahorro estilo Nequi: apartar dinero para metas con o sin candado."""
+
+    __tablename__ = "bolsillo_ahorro"
+    __table_args__ = (
+        CheckConstraint("saldo_actual >= 0", name="ck_bolsillo_saldo_no_negativo"),
+        Index("idx_bolsillo_cuenta", "id_cuenta"),
+    )
+
+    id_bolsillo: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    id_cuenta: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("cuenta.id_cuenta", ondelete="CASCADE"), nullable=False
+    )
+    nombre: Mapped[str] = mapped_column(String(80), nullable=False)
+    emoji: Mapped[str] = mapped_column(String(16), nullable=False, default="💰")
+    monto_meta: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    saldo_actual: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=Decimal("0.00"))
+    bloqueado: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    fecha_creacion: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    cuenta: Mapped["Cuenta"] = relationship(back_populates="bolsillos")
+
+
+class TokenRetiro(Base):
+    """Saca Plata / Retiro sin tarjeta en cajero o corresponsal (estilo Nequi)."""
+
+    __tablename__ = "token_retiro"
+    __table_args__ = (
+        Index("idx_retiro_cuenta", "id_cuenta"),
+        Index("idx_retiro_codigo", "codigo_retiro"),
+    )
+
+    id_token: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    id_cuenta: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("cuenta.id_cuenta", ondelete="CASCADE"), nullable=False
+    )
+    codigo_retiro: Mapped[str] = mapped_column(String(6), nullable=False)
+    monto: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    estado: Mapped[str] = mapped_column(String(20), nullable=False, default="activo")
+    fecha_creacion: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    fecha_expiracion: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+

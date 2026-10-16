@@ -93,3 +93,50 @@ class TransferenciaRecibidaOut(BaseModel):
     monto: Decimal
     estado: str
     recibido_en: datetime
+
+
+class BolsilloCreate(BaseModel):
+    nombre: str = Field(min_length=1, max_length=80)
+    emoji: str = Field(default="💰", max_length=16)
+    monto_meta: Decimal | None = None
+    bloqueado: bool = False
+
+
+class BolsilloOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id_bolsillo: uuid.UUID
+    id_cuenta: uuid.UUID
+    nombre: str
+    emoji: str
+    monto_meta: Decimal | None
+    saldo_actual: Decimal
+    bloqueado: bool
+    fecha_creacion: datetime
+    progreso_porcentaje: float | None = None
+
+
+class BolsilloMovimiento(BaseModel):
+    monto: Decimal = Field(gt=0)
+
+
+class TokenRetiroCreate(BaseModel):
+    monto: Decimal = Field(gt=0)
+
+
+class TokenRetiroOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id_token: uuid.UUID
+    id_cuenta: uuid.UUID
+    codigo_retiro: str
+    monto: Decimal
+    estado: str
+    fecha_creacion: datetime
+    fecha_expiracion: datetime
+
+
+class TokenRetiroCobro(BaseModel):
+    codigo_retiro: str = Field(min_length=6, max_length=6)
+    monto: Decimal = Field(gt=0)
+
