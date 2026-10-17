@@ -267,6 +267,62 @@ def buscar_cuenta_por_numero(numero_cuenta: str, db: Session = Depends(get_db)):
     return _destinatario_publico(cuenta)
 
 
+@router.get("/accounts/by-telefono/{telefono}")
+def buscar_cuenta_por_telefono(telefono: str, db: Session = Depends(get_db)):
+    """Busca una cuenta activa asociada a un número de celular (estilo Nequi / Bre-B)."""
+    clean = "".join(ch for ch in telefono if ch.isdigit())
+    if len(clean) < 7:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Número de celular inválido",
+        )
+
+    import httpx
+    from ..config import settings
+    try:
+        r = httpx.get(
+            f"{settings.identity_service_url}/users/by-telefono/{clean}",
+            timeout=settings.identity_timeout_seconds,
+        )
+        if r.status_code == 404:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No existe ningún usuario registrado con ese número de celular",
+            )
+        if r.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Error al consultar el servicio de identidad",
+            )
+        u_data = r.json()
+        id_usuario = uuid.UUID(u_data["id_usuario"])
+        nombre_titular = f"{u_data.get('nombre', '')} {u_data.get('apellido') or ''}".strip()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Servicio de identidad no disponible: {exc}",
+        )
+
+    stmt = (
+        select(Cuenta)
+        .where(Cuenta.id_usuario == id_usuario, Cuenta.estado == "activa")
+        .order_by(Cuenta.fecha_apertura.asc())
+    )
+    cuenta = db.execute(stmt).scalars().first()
+    if not cuenta:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="El usuario no tiene una cuenta activa para recibir dinero",
+        )
+
+    res = _destinatario_publico(cuenta)
+    res["nombre_titular"] = nombre_titular
+    res["telefono"] = clean[-10:]
+    return res
+
+
 def _destinatario_publico(cuenta: Cuenta) -> dict:
     """Datos publicos minimos de una cuenta destino (sin datos sensibles)."""
     # Consultar nombre del titular a identity-service (solo nombre, no datos sensibles)
