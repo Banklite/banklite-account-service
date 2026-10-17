@@ -116,8 +116,14 @@ def open_account(payload: AccountCreate, db: Session = Depends(get_db)):
 
     proyeccion_encontrada = db.get(UsuarioVerificado, payload.id_usuario) is not None
 
+    telefono_usuario = "".join(ch for ch in str(usuario.get("telefono", "")) if ch.isdigit())[-10:]
+    num_cuenta = telefono_usuario if len(telefono_usuario) == 10 else generar_numero_cuenta(db)
+    existe_num = db.execute(select(Cuenta).where(Cuenta.numero_cuenta == num_cuenta)).scalars().first()
+    if existe_num and existe_num.id_usuario != payload.id_usuario:
+        num_cuenta = generar_numero_cuenta(db)
+
     cuenta = Cuenta(
-        numero_cuenta=generar_numero_cuenta(db),
+        numero_cuenta=num_cuenta,
         id_usuario=payload.id_usuario,
         moneda=moneda,
         estado="activa",
