@@ -273,28 +273,19 @@ def buscar_cuenta_por_numero(numero_cuenta: str, db: Session = Depends(get_db)):
     return _destinatario_publico(cuenta)
 
 
-@router.get("/accounts/by-telefono/{telefono}")
-def buscar_cuenta_por_telefono(telefono: str, db: Session = Depends(get_db)):
-    """Busca una cuenta activa asociada a un número de celular (estilo Nequi / Bre-B)."""
-    clean = "".join(ch for ch in telefono if ch.isdigit())
-    if len(clean) < 7:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Número de celular inválido",
-        )
-
+def _destinatario_de_identity(db: Session, ruta_identity: str, detalle_404: str) -> dict:
+    """Consulta identity-service (REST sincrono) y devuelve la cuenta activa del usuario encontrado."""
     import httpx
     from ..config import settings
     try:
         r = httpx.get(
-            f"{settings.identity_service_url}/users/by-telefono/{clean}",
+            f"{settings.identity_service_url}{ruta_identity}",
             timeout=settings.identity_timeout_seconds,
         )
         if r.status_code == 404:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No existe ningún usuario registrado con ese número de celular",
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detalle_404)
+        if r.status_code == 400:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Llave inválida")
         if r.status_code != 200:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
@@ -325,8 +316,34 @@ def buscar_cuenta_por_telefono(telefono: str, db: Session = Depends(get_db)):
 
     res = _destinatario_publico(cuenta)
     res["nombre_titular"] = nombre_titular
-    res["telefono"] = clean[-10:]
+    tel = "".join(ch for ch in (u_data.get("telefono") or "") if ch.isdigit())
+    res["telefono"] = tel[-10:] if tel else None
     return res
+
+
+@router.get("/accounts/by-telefono/{telefono}")
+def buscar_cuenta_por_telefono(telefono: str, db: Session = Depends(get_db)):
+    """Busca una cuenta activa asociada a un número de celular (estilo Nequi / Bre-B)."""
+    clean = "".join(ch for ch in telefono if ch.isdigit())
+    if len(clean) < 7:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Número de celular inválido",
+        )
+    return _destinatario_de_identity(
+        db, f"/users/by-telefono/{clean}", "No existe ningún usuario registrado con ese número de celular"
+    )
+
+
+@router.get("/accounts/by-llave/{valor}")
+def buscar_cuenta_por_llave(valor: str, db: Session = Depends(get_db)):
+    """Busca la cuenta de un destinatario por su llave Bre-B: celular, número de documento o correo."""
+    import urllib.parse
+    return _destinatario_de_identity(
+        db,
+        f"/users/by-llave/{urllib.parse.quote(valor.strip(), safe='')}",
+        "No hay ningún usuario con esa llave Bre-B",
+    )
 
 
 def _destinatario_publico(cuenta: Cuenta) -> dict:
