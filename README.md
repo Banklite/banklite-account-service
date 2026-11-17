@@ -89,6 +89,26 @@ uvicorn app.main:app --reload --port 8002
 
 Prueba: abre <http://localhost:8002/docs>.
 
+## Pruebas automatizadas
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests -v --cov=app --cov-report=term-missing --cov-report=html
+```
+
+No necesitan PostgreSQL, RabbitMQ ni los otros microservicios: la base es SQLite en memoria y las dependencias externas se reemplazan con mocks (`unittest.mock`). El reporte navegable queda en `htmlcov/index.html`.
+
+| Tipo | Archivo | Que verifica |
+|---|---|---|
+| Unitaria | `tests/unit/test_limites_y_validaciones.py` | Limites regulatorios por pais (moneda, limite diario y mensual) y validacion de moneda, estado y montos. |
+| Unitaria (mocks) | `tests/unit/test_identity_client.py` | Cliente REST hacia identity-service con `httpx` simulado (200, 404, 5xx, sin red) y despacho de eventos con canal de RabbitMQ simulado (ack / nack). |
+| Integracion | `tests/integration/test_accounts_api.py` | Abrir una cuenta crea cuenta + 2 limites + restriccion en la base; reglas de KYC, pais y moneda; suspension y cierre; bolsillos; codigo de retiro; eventos `identity.verified` y `transfer.completed` guardados en la base. |
+| Integracion | `tests/integration/test_llave.py` | Busqueda de la cuenta destino por llave (cedula, correo o celular) consultando a identity-service. |
+
+Resultado actual: **44 pruebas** (22 unitarias y 22 de integracion), todas aprobadas, con **86 % de cobertura** de `app/`.
+
+En GitHub Actions las pruebas corren en cada `push` y `pull request`. Si una falla, la imagen no se construye y no se despliega. El reporte de cobertura queda en el resumen de la ejecucion y como artefacto descargable `coverage-banklite-account-service`.
+
 ## Repositorios del proyecto
 
 `banklite-identity-service`, `banklite-account-service`, `banklite-ledger-service`, `banklite-transfer-service`, `banklite-card-service`, `banklite-fraud-service`, `banklite-notification-service`, `banklite-compliance-service`. Panel web: `services/web-panel` en el repositorio `banklite-microservicios`.
